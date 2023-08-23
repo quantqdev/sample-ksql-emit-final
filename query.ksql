@@ -1,0 +1,34 @@
+DROP TABLE IF EXISTS USER_RECORD_IN_WINDOW DELETE TOPIC;
+DROP STREAM IF EXISTS USER_RECORD DELETE TOPIC;
+
+CREATE STREAM USER_RECORD (
+    timestamp VARCHAR,
+    `properties` STRUCT<
+        user_id VARCHAR,
+        prop1 VARCHAR,
+        prop2 VARCHAR
+    >
+)
+WITH (
+    kafka_topic='user-record',
+    partitions = 1,
+    value_format='JSON'
+);
+
+CREATE TABLE USER_RECORD_IN_WINDOW
+WITH (
+    kafka_topic = 'user-record-in-window'
+) 
+AS SELECT
+    r.`properties`->user_id as agg_0,
+    LATEST_BY_OFFSET(r.timestamp) as timestamp,
+    FORMAT_TIMESTAMP(FROM_UNIXTIME(WINDOWSTART), 'yyyy-MM-dd HH:mm:ss.SSS') as Window_Start,
+    FORMAT_TIMESTAMP(FROM_UNIXTIME(WINDOWEND), 'yyyy-MM-dd HH:mm:ss.SSS') as Window_End,
+    FORMAT_TIMESTAMP(FROM_UNIXTIME(max(ROWTIME)), 'yyyy-MM-dd HH:mm:ss.SSS') as Window_Emit,
+    LATEST_BY_OFFSET(r.`properties`->user_id) as user_id,
+    LATEST_BY_OFFSET(r.`properties`->prop1) as prop1,
+    LATEST_BY_OFFSET(r.`properties`->prop2) as prop2
+FROM USER_RECORD as r
+WINDOW TUMBLING (SIZE 10 SECONDS)
+GROUP BY r.`properties`->user_id
+EMIT FINAL;
